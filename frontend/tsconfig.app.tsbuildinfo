@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/groups.ts","./src/live.ts","./src/main.tsx","./src/components/accountcard.tsx","./src/components/accountpositions.tsx","./src/components/tabs.tsx","./src/pages/accountpage.tsx","./src/pages/overview.tsx"],"errors":true,"version":"5.9.3"}
