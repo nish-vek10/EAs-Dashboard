@@ -16,6 +16,8 @@ export function subscribe(onEvent: (e: LiveEvent) => void) {
       onEvent(evt);
     } catch {}
   };
-  es.onerror = () => { /* browser auto-retries */ };
+  es.onerror = () => {
+    /* browser auto-retries */
+  };
   return () => es.close();
 }
