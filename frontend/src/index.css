@@ -15,10 +15,12 @@
 * {
   box-sizing: border-box;
 }
+
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
+  height: auto;
   margin: 0;
 }
 
@@ -32,19 +34,24 @@ body {
     Roboto,
     Helvetica,
     Arial;
-  background:
-    radial-gradient(
-      1200px 800px at 80% -10%,
-      rgba(124, 58, 237, 0.15),
-      transparent 60%
-    ),
-    radial-gradient(
-      1000px 600px at -10% 20%,
-      rgba(34, 211, 238, 0.12),
-      transparent 55%
-    ),
-    var(--bg);
+  background: transparent; /* we’ll render bg in ::before instead */
   color: var(--text);
+}
+
+/* 🔥 Continuous full-viewport gradient background (never breaks on scroll) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1200px 800px at 80% -10%, rgba(124, 58, 237, 0.15), transparent 60%),
+    radial-gradient(1000px 600px at -10% 20%, rgba(34, 211, 238, 0.12), transparent 55%),
+    linear-gradient(180deg, #0b1020 0%, #0b1020 40%, #0a0f1d 70%, #0a0e19 100%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-size: cover;
 }
 
 /* Header */
@@ -205,6 +212,41 @@ body {
 .badge.sell {
   color: var(--danger);
   border-color: rgba(239, 68, 68, 0.35);
+}
+
+/* --- Metrics grid: desktop vs mobile --- */
+.metric-grid {
+  grid-template-columns: repeat(5, minmax(120px, 1fr)); /* includes Net% */
+  width: fit-content;
+  margin-left: auto;     /* push cluster to right on desktop */
+  justify-items: end;    /* right-align tiles */
+}
+
+/* Visibility toggles for Net% duplicates */
+.netpct--header { display: none; } /* hidden on desktop */
+.netpct--grid   { display: block; } /* shown on desktop */
+
+@media (max-width: 640px) {
+  /* On phones: show Net% in header, hide it in grid */
+  .netpct--header { display: block; }
+  .netpct--grid   { display: none; }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr)); /* 4 tiles wrap */
+    width: 100%;
+    margin-left: 0;
+    justify-items: stretch;
+  }
+
+  .kpi {
+    min-width: 0;
+    text-align: left;
+  }
+
+  /* iOS Safari background fix */
+  body::before {
+    background-attachment: scroll;
+  }
 }
 
 /* Mobile adjustments */

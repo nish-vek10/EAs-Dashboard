@@ -8,7 +8,11 @@ export type AccountRow = {
   label?: string;
   server?: string;
   currency?: string;
-  // live fields (optional)
+
+  // used for Net % calculation
+  account_size?: number;
+
+  // live fields (optional; merged from SSE snapshots)
   balance?: number;
   equity?: number;
   margin?: number;
@@ -17,12 +21,15 @@ export type AccountRow = {
   updated_at?: number;
 };
 
-// Wire up to FastAPI: /accounts and /accounts/{login}/snapshot
+// ---- Backend wire types ----
+// Match what /accounts now returns (see backend main.py).
 type BackendAccount = {
   label: string;
-  login: number;
+  login: number;                 // backend includes this
+  login_hint?: string;           // backend provides this helper (string)
   server: string;
-  currency: string;
+  currency?: string;
+  account_size?: number;         // <-- IMPORTANT: keep this
 };
 
 export type Snapshot = {
@@ -41,6 +48,7 @@ export type Snapshot = {
 
 /**
  * Load account list from FastAPI and map to AccountRow.
+ * IMPORTANT: do not drop `account_size`.
  */
 export async function fetchAccounts(): Promise<AccountRow[]> {
   const res = await fetch(`${API}/accounts`, {
@@ -51,11 +59,15 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
     throw new Error(`GET /accounts failed (${res.status}): ${txt}`);
   }
   const data = (await res.json()) as BackendAccount[];
+
   return data.map((a) => ({
-    login_hint: String(a.login),
+    // prefer backend-provided login_hint; fall back to stringified login
+    login_hint: a.login_hint ?? String(a.login),
     label: a.label,
     server: a.server,
     currency: a.currency,
+    account_size: a.account_size,      // <-- keep it
+    // live fields (balance/equity/etc.) arrive via SSE and get merged later
   }));
 }
 
@@ -76,16 +88,13 @@ export async function fetchSnapshot(login_hint: string | number): Promise<Snapsh
 
 // --- Compatibility shims for AccountPage.tsx ---
 
-// Return the single account row by login (string or number)
 export async function fetchAccount(login_hint: string | number): Promise<AccountRow | null> {
   const all = await fetchAccounts();
   const key = String(login_hint);
-  return all.find(a => a.login_hint === key) ?? null;
+  return all.find((a) => a.login_hint === key) ?? null;
 }
 
 // TEMP: positions endpoint not implemented yet on the backend.
-// Provide an empty list so AccountPage renders without crashing.
-// We'll replace this with a real call to FastAPI (/accounts/{login}/positions) later.
 export type Position = {
   ticket: number;
   symbol: string;
@@ -95,7 +104,7 @@ export type Position = {
   profit: number;
 };
 
-export async function fetchAccountPositions(login_hint: string | number): Promise<Position[]> {
+export async function fetchAccountPositions(_login_hint: string | number): Promise<Position[]> {
   // For now, no REST call; return empty until we add backend positions.
   return [];
 }
