@@ -30,6 +30,13 @@ app.add_middleware(
 def health():
     return {"ok": True}
 
+@app.get("/")
+def root():
+    return {
+        "service": "EAs Dashboard API",
+        "status": "ok",
+        "endpoints": ["/health", "/accounts", "/live"],
+    }
 
 # ---- MT5 bridge wiring ------------------------------------------------------
 
