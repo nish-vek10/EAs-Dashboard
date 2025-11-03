@@ -1,0 +1,7 @@
+# local secrets
+.env
+accounts.json
+
+# python junk
+__pycache__/
+*.pyc
