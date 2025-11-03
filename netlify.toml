@@ -1,9 +1,13 @@
-# netlify.toml (repo root)
 [build]
   base = "frontend"
   command = "npm ci && npm run build"
   publish = "dist"
 
+[build.environment]
+  NODE_VERSION = "20"
+  VITE_API_URL = "https://legacy-antique-improvements-webcams.trycloudflare.com"
+
+# SPA fallback (keep this if you already had it)
 [[redirects]]
   from = "/*"
   to = "/index.html"
