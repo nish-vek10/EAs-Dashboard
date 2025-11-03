@@ -5,7 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  VITE_API_URL = "https://legacy-antique-improvements-webcams.trycloudflare.com"
+  VITE_API_URL = "https://falling-scholars-negotiation-extract.trycloudflare.com"
 
 # SPA fallback (keep this if you already had it)
 [[redirects]]
