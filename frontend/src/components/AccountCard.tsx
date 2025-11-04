@@ -1,5 +1,4 @@
-// frontend/src/components/AccountCard.tsx
-import React from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountRow } from "../api";
 
 function fmt(n?: number | null, digits = 2) {
@@ -17,9 +16,54 @@ function fmtPct(n?: number | null) {
   return Number(n) >= 0 ? `+${v}%` : `${v}%`;
 }
 
+// tiny sparkline component (inline SVG)
+function Sparkline({ data }: { data: number[] }) {
+  const w = 80;
+  const h = 24;
+
+  const path = useMemo(() => {
+    if (!data.length) return "";
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const span = max - min || 1;
+
+    const step = data.length > 1 ? w / (data.length - 1) : w;
+    return data
+      .map((v, i) => {
+        const x = i * step;
+        const y = h - ((v - min) / span) * h; // invert for SVG
+        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  }, [data]);
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", opacity: 0.9 }}>
+      <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 export default function AccountCard({ a }: { a: AccountRow }) {
-  // Use values coming from Overview’s live merge (polling /snapshots/latest)
   const currency = a.currency || "USD";
+
+  // Keep a tiny rolling history of equity for sparkline
+  const [history, setHistory] = useState<number[]>([]);
+  const lastTsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof a.equity === "number" && typeof a.updated_at === "number") {
+      // only push when we get a new tick
+      if (lastTsRef.current === null || a.updated_at > lastTsRef.current) {
+        lastTsRef.current = a.updated_at;
+        setHistory((prev) => {
+          const next = [...prev, a.equity!];
+          // cap to ~40 points
+          return next.length > 40 ? next.slice(next.length - 40) : next;
+        });
+      }
+    }
+  }, [a.equity, a.updated_at]);
 
   const balance = fmt(a.balance);
   const equityNum = typeof a.equity === "number" ? a.equity : null;
@@ -118,7 +162,12 @@ export default function AccountCard({ a }: { a: AccountRow }) {
 
         {/* Net % tile for MOBILE (header) */}
         <div className="netpct netpct--header" style={{ minWidth: 120 }}>
-          <Metric label="Net % Change" value={netPctStr} valueColor={netColor} valueBold />
+          <Metric
+            label="Net % Change"
+            value={netPctStr}
+            valueColor={netColor}
+            valueBold
+          />
         </div>
       </div>
 
@@ -126,11 +175,51 @@ export default function AccountCard({ a }: { a: AccountRow }) {
       <div className="metric-grid" style={{ display: "grid", gap: 12 }}>
         {/* Net % for DESKTOP */}
         <div className="netpct netpct--grid">
-          <Metric label="Net % Change" value={netPctStr} valueColor={netColor} valueBold />
+          <Metric
+            label="Net % Change"
+            value={netPctStr}
+            valueColor={netColor}
+            valueBold
+          />
         </div>
 
         <Metric label="Balance" value={balance} />
-        <Metric label="Equity" value={equity} />
+
+        {/* Equity + sparkline */}
+        <div
+          className="kpi"
+          style={{
+            background: "rgba(10, 12, 18, 0.5)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            textAlign: "right",
+            borderRadius: 12,
+            padding: 12,
+            minWidth: 120,
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Equity</div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 16,
+                fontWeight: 800,
+                // smooth number color changes
+                transition: "color 250ms ease",
+              }}
+            >
+              {equity}
+            </div>
+          </div>
+          <div style={{ color: "#8ab4f8" }}>
+            {history.length > 1 ? <Sparkline data={history} /> : null}
+          </div>
+        </div>
+
         <Metric label="Margin" value={margin} />
         <Metric label="Free Margin" value={free} />
       </div>
@@ -168,6 +257,8 @@ function Metric({
           fontSize: 16,
           color: valueColor || "inherit",
           fontWeight: valueBold ? 700 : 800,
+          // smooth color transition for net% tile
+          transition: "color 250ms ease",
         }}
       >
         {value}
