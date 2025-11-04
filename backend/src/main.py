@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
@@ -128,40 +128,39 @@ async def _poll_snapshots():
 # ---- REST endpoints ---------------------------------------------------------
 
 @app.get("/accounts")
-def list_accounts() -> List[dict]:
+def list_accounts(group: Optional[str] = Query(default=None)) -> List[dict]:
     """
     List accounts without secrets.
-
-    - Local (MT5_ENABLED=1): returns the accounts.json projection (current behavior).
-    - Cloud (MT5_ENABLED=0): returns rows from Supabase 'accounts' table,
-      mapped to the frontend's expected shape.
+    - Local (MT5_ENABLED=1): from accounts.json (your existing behavior).
+    - Cloud (MT5_ENABLED=0): from Supabase 'accounts', optional filter by tab name via ?group=E2T%20Demos.
     """
     if MT5_ENABLED:
+        # local dev path from accounts.json (no groups there)
         return ACCOUNTS_LIST
 
-    # Cloud fallback to Supabase
     if not supabase_client:
-        # No Supabase configured; return empty list gracefully
         return []
 
-    # Pull minimal fields and map to your frontend AccountRow shape
-    try:
+    # If a tab is requested, join with groups to filter
+    if group:
+        # fetch accounts joined with group by name
+        resp = supabase_client.from_("v_accounts_with_group").select(
+            "name,broker,mt5_login,base_currency,account_size,group_name"
+        ).eq("group_name", group).order("name").execute()
+    else:
         resp = supabase_client.table("accounts").select(
-            "id,name,broker,mt5_login,base_currency"
-        ).order("name", desc=False).execute()
-    except Exception:
-        return []
+            "name,broker,mt5_login,base_currency,account_size"
+        ).order("name").execute()
 
     out: List[dict] = []
     for r in (resp.data or []):
         out.append({
             "label": r.get("name"),
-            # frontend uses login_hint as the stable string id
+            "login": 0,
             "login_hint": str(r.get("mt5_login") or r.get("id")),
             "server": r.get("broker") or "",
             "currency": r.get("base_currency") or "USD",
-            # keep this key so frontend math doesn't break (null is OK)
-            "account_size": None,
+            "account_size": r.get("account_size"),
         })
     return out
 
@@ -224,6 +223,46 @@ async def live(request: Request):
             await asyncio.sleep(5)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@app.get("/groups")
+def groups_summary() -> List[dict]:
+    """
+    Returns [{ name, count, sort_index }], including 'All Accounts'.
+    """
+    if not SUPABASE_ENABLED or not supabase_client:
+        # fallback: static if needed
+        return [
+            {"name": "All Accounts", "count": len(ACCOUNTS_LIST), "sort_index": 0},
+            {"name": "E2T Demos", "count": 0, "sort_index": 1},
+            {"name": "Nish Algos", "count": 0, "sort_index": 2},
+        ]
+
+    # counts per group (view already includes All Accounts)
+    counts = supabase_client.from_("v_account_counts_by_group").select(
+        "group_name,account_count"
+    ).execute()
+
+    # also fetch sort_index from account_groups to keep order
+    tabs = supabase_client.table("account_groups").select(
+        "name,sort_index"
+    ).execute()
+
+    sort_map = {t["name"]: t["sort_index"] for t in (tabs.data or [])}
+    out: List[dict] = []
+    for row in (counts.data or []):
+        name = row.get("group_name") or "All Accounts"
+        out.append({
+            "name": name,
+            "count": int(row.get("account_count") or 0),
+            "sort_index": sort_map.get(name, 999),
+        })
+    # ensure All Accounts exists even if view name mismatches
+    if not any(x["name"] == "All Accounts" for x in out):
+        out.append({"name": "All Accounts", "count": sum(x["count"] for x in out), "sort_index": 0})
+    # order
+    out.sort(key=lambda x: (x["sort_index"], x["name"].lower()))
+    return out
 
 
 # ---- Lifecycle --------------------------------------------------------------
