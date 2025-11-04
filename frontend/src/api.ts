@@ -50,25 +50,22 @@ export type Snapshot = {
  * Load account list from FastAPI and map to AccountRow.
  * IMPORTANT: do not drop `account_size`.
  */
-export async function fetchAccounts(): Promise<AccountRow[]> {
-  const res = await fetch(`${API}/accounts`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`GET /accounts failed (${res.status}): ${txt}`);
-  }
-  const data = (await res.json()) as BackendAccount[];
 
-  return data.map((a) => ({
-    // prefer backend-provided login_hint; fall back to stringified login
-    login_hint: a.login_hint ?? String(a.login),
-    label: a.label,
-    server: a.server,
-    currency: a.currency,
-    account_size: a.account_size,      // <-- keep it
-    // live fields (balance/equity/etc.) arrive via SSE and get merged later
-  }));
+export async function fetchSnapshot(login_hint: string | number): Promise<Snapshot> {
+  const now = Date.now() / 1000;
+  return {
+    label: String(login_hint),
+    login: 0,
+    balance: 0,
+    equity: 0,
+    margin: 0,
+    margin_free: 0,
+    margin_level: 0,
+    profit: 0,
+    currency: "USD",
+    server: "",
+    timestamp: now,
+  };
 }
 
 /**
