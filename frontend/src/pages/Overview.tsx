@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { fetchAccounts, type AccountRow } from "../api";
-import { subscribe, type LiveEvent } from "../live";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { fetchAccountsFiltered, fetchLatestSnapshots, type AccountRow } from "../api";
 import AccountCard from "../components/AccountCard";
-import { getGroup, type Group } from "../groups";
+import { type Group } from "../groups"; // keep your type for the tab prop
 
 type SortKey = "alpha" | "equity_asc" | "equity_desc" | "net_asc" | "net_desc";
 
@@ -23,77 +22,101 @@ function getNetPct(a: AccountRow) {
 
 function cmpNumberAsc(a: number, b: number) {
   if (Number.isNaN(a) && Number.isNaN(b)) return 0;
-  if (Number.isNaN(a)) return 1; // NaNs to the end
+  if (Number.isNaN(a)) return 1;
   if (Number.isNaN(b)) return -1;
   return a - b;
 }
 
-// Use label for alphabetical sort; fall back to login_hint if label is missing
 const labelKey = (a: AccountRow) =>
   (a.label && a.label.trim().length ? a.label : a.login_hint || "").toLowerCase();
+
+const POLL_MS = 2000;
 
 export default function Overview({ filter }: { filter: Group }) {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("alpha"); // default A→Z
+  const [sortKey, setSortKey] = useState<SortKey>("alpha");
+  const timerRef = useRef<number | null>(null);
 
+  // Map your existing Group type to backend group names
+  function groupNameFromFilter(f: Group): string | undefined {
+    if (f === "All") return undefined; // no filter -> All Accounts
+    // For your existing tabs, the names match Supabase:
+    // "E2T Demos" | "Nish Algos"
+    return String(f);
+  }
+
+  // Load accounts whenever the tab changes
   useEffect(() => {
-    let unsubscribe: () => void = () => {};
+    let mounted = true;
+    setError(null);
+
+    const group = groupNameFromFilter(filter);
 
     (async () => {
       try {
-        const initial = await fetchAccounts();
+        const initial = await fetchAccountsFiltered(group);
+        if (!mounted) return;
         setAccounts(initial);
       } catch (e: any) {
+        if (!mounted) return;
         setError(e?.message || "Failed to load accounts");
       }
-
-      // Live updates: positions + snapshot merge
-      unsubscribe = subscribe((evt: LiveEvent) => {
-        if (evt.type !== "positions_snapshot") return;
-
-        setAccounts((prev) => {
-          const map = new Map(prev.map((a) => [a.login_hint, { ...a }]));
-          const row =
-            map.get(evt.account) ??
-            ({
-              login_hint: evt.account,
-              positions_count: 0,
-            } as AccountRow);
-
-          row.positions_count = Array.isArray(evt.positions)
-            ? evt.positions.length
-            : 0;
-
-          if (evt.snapshot) {
-            row.balance = evt.snapshot.balance;
-            row.equity = evt.snapshot.equity;
-            row.margin = evt.snapshot.margin;
-            row.margin_free = evt.snapshot.margin_free;
-            row.currency = row.currency ?? evt.snapshot.currency;
-          }
-          row.updated_at = evt.ts;
-
-          map.set(evt.account, row);
-          return Array.from(map.values());
-        });
-      });
     })();
 
-    return () => {
+    return () => { mounted = false; };
+  }, [filter]);
+
+  // Poll /snapshots/latest and merge values
+  useEffect(() => {
+    let mounted = true;
+
+    async function poll() {
       try {
-        unsubscribe();
-      } catch {}
+        const latest = await fetchLatestSnapshots();
+        if (!mounted) return;
+
+        const byKey = new Map(latest.map(s => [String(s.login_hint), s]));
+
+        setAccounts(prev => prev.map(a => {
+          const hit = byKey.get(a.login_hint);
+          if (!hit) return a;
+
+          const eq = (hit.snapshot?.equity ?? a.equity ?? 0) as number;
+          const size = a.account_size ?? 0;
+          const computedPct = size > 0 ? ((eq - size) / size) * 100 : null;
+          const _netPct = hit.net_return_pct ?? computedPct; // if you later show it explicitly
+
+          return {
+            ...a,
+            balance: hit.snapshot?.balance ?? a.balance ?? null,
+            equity: eq ?? null,
+            margin: hit.snapshot?.margin ?? a.margin ?? null,
+            margin_free: hit.snapshot?.margin_free ?? a.margin_free ?? null,
+            updated_at: typeof hit.updated_at === "string"
+              ? Math.floor(Date.parse(hit.updated_at) / 1000)
+              : (typeof hit.updated_at === "number" ? hit.updated_at : a.updated_at ?? null),
+          };
+        }));
+      } catch {
+        // keep UI smooth on transient errors
+      }
+    }
+
+    poll();
+    timerRef.current = window.setInterval(poll, POLL_MS) as unknown as number;
+
+    return () => {
+      mounted = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, []);
+  }, []); // poll regardless of tab
 
   const visible = useMemo(() => {
-    const byGroup =
-      filter === "All"
-        ? accounts
-        : accounts.filter((a) => getGroup(a.login_hint) === filter);
-
-    const arr = [...byGroup];
+    const arr = [...accounts];
 
     switch (sortKey) {
       case "equity_asc":
@@ -110,12 +133,12 @@ export default function Overview({ filter }: { filter: Group }) {
         break;
       case "alpha":
       default:
-        arr.sort((a, b) => labelKey(a).localeCompare(labelKey(b))); // A→Z by label
+        arr.sort((a, b) => labelKey(a).localeCompare(labelKey(b)));
         break;
     }
 
     return arr;
-  }, [accounts, filter, sortKey]);
+  }, [accounts, sortKey]);
 
   if (error) return <div className="rowcard">Error: {error}</div>;
   if (!visible.length) return <div className="muted">No accounts in this view yet.</div>;
