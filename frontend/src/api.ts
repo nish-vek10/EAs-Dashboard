@@ -1,18 +1,12 @@
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-/**
- * Shape expected by the UI (Overview.tsx, AccountCard, etc.)
- */
 export type AccountRow = {
-  login_hint: string;      // string id used across the UI
+  login_hint: string;
   label?: string;
   server?: string;
   currency?: string;
-
-  // used for Net % calculation
   account_size?: number;
 
-  // live fields (optional; merged from snapshots)
   balance?: number | null;
   equity?: number | null;
   margin?: number | null;
@@ -21,14 +15,13 @@ export type AccountRow = {
   updated_at?: number | null;
 };
 
-// ---- Backend wire types ----
 type BackendAccount = {
   label: string;
-  login: number;                 // backend includes this for local MT5 mode
-  login_hint?: string;           // helper (string)
+  login: number;
+  login_hint?: string;
   server: string;
   currency?: string;
-  account_size?: number;
+  account_size?: number | string | null;
 };
 
 export type Snapshot = {
@@ -45,9 +38,13 @@ export type Snapshot = {
   timestamp: number;
 };
 
-/**
- * Load account list from FastAPI and map to AccountRow.
- */
+const toNum = (v: any): number | null => {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** List accounts */
 export async function fetchAccounts(): Promise<AccountRow[]> {
   const res = await fetch(`${API}/accounts`, { headers: { Accept: "application/json" } });
   if (!res.ok) {
@@ -60,14 +57,11 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
     label: a.label,
     server: a.server,
     currency: a.currency,
-    account_size: a.account_size,
+    account_size: a.account_size != null ? Number(a.account_size) : undefined,
   }));
-
 }
 
-/**
- * CLOUD MODE STUB: do NOT call the MT5 endpoint in production.
- */
+/** CLOUD MODE stub (kept for compatibility) */
 export async function fetchSnapshot(login_hint: string | number): Promise<Snapshot> {
   const now = Date.now() / 1000;
   return {
@@ -85,18 +79,11 @@ export async function fetchSnapshot(login_hint: string | number): Promise<Snapsh
   };
 }
 
-/**
- * Latest metrics per account from the backend (Supabase-backed).
- */
+/** Latest metrics per account (normalized) */
 export async function fetchLatestSnapshots(): Promise<
   {
     login_hint: string;
-    snapshot: {
-      balance: number | null;
-      equity: number | null;
-      margin: number | null;
-      margin_free: number | null;
-    };
+    snapshot: { balance: number | null; equity: number | null; margin: number | null; margin_free: number | null };
     net_return_pct: number | null;
     updated_at: string | number | null;
   }[]
@@ -107,7 +94,6 @@ export async function fetchLatestSnapshots(): Promise<
     throw new Error(`GET /snapshots/latest failed (${res.status}): ${txt}`);
   }
   const raw = (await res.json()) as any[];
-  const toNum = (v: any) => (v === null || v === undefined ? null : (Number(v) ?? null));
   return raw.map((r) => ({
     login_hint: String(r.login_hint),
     snapshot: {
@@ -121,19 +107,18 @@ export async function fetchLatestSnapshots(): Promise<
   }));
 }
 
-// --- Compatibility shims for AccountPage.tsx ---
+/** Compatibility shim */
 export async function fetchAccount(login_hint: string | number): Promise<AccountRow | null> {
   const all = await fetchAccounts();
   const key = String(login_hint);
   return all.find((a) => a.login_hint === key) ?? null;
 }
 
-// TEMP: positions endpoint not implemented yet on the backend.
 export type Position = {
   ticket: number;
   symbol: string;
   volume: number;
-  type: string;        // "buy" | "sell"
+  type: string;
   price_open: number;
   profit: number;
 };
@@ -160,12 +145,12 @@ export async function fetchAccountsFiltered(group?: string): Promise<AccountRow[
     const txt = await res.text().catch(() => "");
     throw new Error(`GET /accounts failed (${res.status}): ${txt}`);
   }
-  const data = (await res.json()) as any[];
+  const data = (await res.json()) as BackendAccount[];
   return data.map((a) => ({
     login_hint: String(a.login_hint ?? a.login ?? ""),
     label: a.label,
     server: a.server,
     currency: a.currency,
-    account_size: a.account_size,
+    account_size: a.account_size != null ? Number(a.account_size) : undefined,
   }));
 }

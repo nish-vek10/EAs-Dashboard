@@ -43,10 +43,10 @@ export function subscribe(cb: (e: LiveEvent) => void): Unsub {
             account: String(r.login_hint),
             positions: [],
             snapshot: {
-              balance: toNum(r?.snapshot?.balance),
-              equity: toNum(r?.snapshot?.equity),
-              margin: toNum(r?.snapshot?.margin),
-              margin_free: toNum(r?.snapshot?.margin_free),
+              balance: toNum((r as any)?.snapshot?.balance),
+              equity: toNum((r as any)?.snapshot?.equity),
+              margin: toNum((r as any)?.snapshot?.margin),
+              margin_free: toNum((r as any)?.snapshot?.margin_free),
             },
             ts: now,
           });
