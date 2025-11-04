@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+// frontend/src/components/AccountCard.tsx
+import React from "react";
 import type { AccountRow } from "../api";
-import { fetchSnapshot, type Snapshot } from "../api";
 
-function fmt(n?: number, digits = 2) {
+function fmt(n?: number | null, digits = 2) {
   if (n === undefined || n === null || Number.isNaN(n)) return "—";
   try {
     return n.toLocaleString(undefined, { maximumFractionDigits: digits });
@@ -11,42 +11,21 @@ function fmt(n?: number, digits = 2) {
   }
 }
 
-function fmtPct(n?: number) {
+function fmtPct(n?: number | null) {
   if (n === undefined || n === null || Number.isNaN(n)) return "—";
-  const v = n.toFixed(2);
-  return n >= 0 ? `+${v}%` : `${v}%`;
+  const v = Number(n).toFixed(2);
+  return Number(n) >= 0 ? `+${v}%` : `${v}%`;
 }
 
 export default function AccountCard({ a }: { a: AccountRow }) {
-  const [snap, setSnap] = useState<Snapshot | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Use values coming from Overview’s live merge (polling /snapshots/latest)
+  const currency = a.currency || "USD";
 
-  useEffect(() => {
-    let stop = false;
-
-    const load = async () => {
-      try {
-        const s = await fetchSnapshot(a.login_hint);
-        if (!stop) setSnap(s);
-      } catch (e: any) {
-        if (!stop) setError(e?.message || "Failed to load snapshot");
-      }
-    };
-
-    load();
-    const id = setInterval(load, 10000);
-    return () => {
-      stop = true;
-      clearInterval(id);
-    };
-  }, [a.login_hint]);
-
-  const currency = a.currency || snap?.currency || "USD";
-  const equityNum = snap?.equity ?? a.equity;
-  const balance = fmt(snap?.balance);
+  const balance = fmt(a.balance);
+  const equityNum = typeof a.equity === "number" ? a.equity : null;
   const equity = fmt(equityNum);
-  const margin = fmt(snap?.margin);
-  const free = fmt(snap?.margin_free);
+  const margin = fmt(a.margin);
+  const free = fmt(a.margin_free);
 
   // Net % = (equity / account_size - 1) * 100
   const netPctNum =
@@ -54,15 +33,19 @@ export default function AccountCard({ a }: { a: AccountRow }) {
     typeof a.account_size === "number" &&
     a.account_size > 0
       ? (equityNum / a.account_size - 1) * 100
-      : undefined;
+      : null;
 
   const netPctStr = fmtPct(netPctNum);
   const netColor =
-    typeof netPctNum === "number"
+    netPctNum !== null
       ? netPctNum >= 0
         ? "var(--success, #22c55e)"
         : "var(--danger, #ef4444)"
       : "inherit";
+
+  // Show "Live" if we’ve seen an update in the last ~10s
+  const nowSec = Date.now() / 1000;
+  const fresh = typeof a.updated_at === "number" && nowSec - a.updated_at < 10;
 
   return (
     <div
@@ -74,7 +57,7 @@ export default function AccountCard({ a }: { a: AccountRow }) {
         border: "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      {/* Header Row: Name + Details (left) / Net% (right on mobile only) */}
+      {/* Header Row */}
       <div
         className="card-header"
         style={{
@@ -102,21 +85,21 @@ export default function AccountCard({ a }: { a: AccountRow }) {
             #{a.login_hint} • {a.server || "—"}
           </div>
 
-          {/* Live + USD together */}
+          {/* Live + USD */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div
               style={{
                 fontSize: 12,
                 padding: "2px 8px",
                 borderRadius: 999,
-                background: snap
+                background: fresh
                   ? "rgba(16,185,129,0.2)"
                   : "rgba(148,163,184,0.2)",
-                color: snap ? "#22c55e" : "#94a3b8",
+                color: fresh ? "#22c55e" : "#94a3b8",
                 width: "fit-content",
               }}
             >
-              {snap ? "Live" : "Pending"}
+              {fresh ? "Live" : "Pending"}
             </div>
 
             <div
@@ -133,27 +116,17 @@ export default function AccountCard({ a }: { a: AccountRow }) {
           </div>
         </div>
 
-        {/* Net % tile for MOBILE (shows on small screens, hidden on desktop) */}
+        {/* Net % tile for MOBILE (header) */}
         <div className="netpct netpct--header" style={{ minWidth: 120 }}>
-          <Metric
-            label="Net % Change"
-            value={netPctStr}
-            valueColor={netColor}
-            valueBold
-          />
+          <Metric label="Net % Change" value={netPctStr} valueColor={netColor} valueBold />
         </div>
       </div>
 
-      {/* Metrics row: desktop includes Net% inside the cluster; mobile shows 4 tiles */}
+      {/* Metrics row */}
       <div className="metric-grid" style={{ display: "grid", gap: 12 }}>
-        {/* Net % for DESKTOP (hidden on small screens) */}
+        {/* Net % for DESKTOP */}
         <div className="netpct netpct--grid">
-          <Metric
-            label="Net % Change"
-            value={netPctStr}
-            valueColor={netColor}
-            valueBold
-          />
+          <Metric label="Net % Change" value={netPctStr} valueColor={netColor} valueBold />
         </div>
 
         <Metric label="Balance" value={balance} />
@@ -161,19 +134,6 @@ export default function AccountCard({ a }: { a: AccountRow }) {
         <Metric label="Margin" value={margin} />
         <Metric label="Free Margin" value={free} />
       </div>
-
-      {error && (
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: "#ef4444",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }
