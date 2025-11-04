@@ -12,24 +12,23 @@ export type AccountRow = {
   // used for Net % calculation
   account_size?: number;
 
-  // live fields (optional; merged from SSE snapshots)
-  balance?: number;
-  equity?: number;
-  margin?: number;
-  margin_free?: number;
+  // live fields (optional; merged from snapshots)
+  balance?: number | null;
+  equity?: number | null;
+  margin?: number | null;
+  margin_free?: number | null;
   positions_count?: number;
-  updated_at?: number;
+  updated_at?: number | null;
 };
 
 // ---- Backend wire types ----
-// Match what /accounts now returns (see backend main.py).
 type BackendAccount = {
   label: string;
-  login: number;                 // backend includes this
-  login_hint?: string;           // backend provides this helper (string)
+  login: number;                 // backend includes this for local MT5 mode
+  login_hint?: string;           // helper (string)
   server: string;
   currency?: string;
-  account_size?: number;         // <-- IMPORTANT: keep this
+  account_size?: number;
 };
 
 export type Snapshot = {
@@ -50,7 +49,29 @@ export type Snapshot = {
  * Load account list from FastAPI and map to AccountRow.
  * IMPORTANT: do not drop `account_size`.
  */
+export async function fetchAccounts(): Promise<AccountRow[]> {
+  const res = await fetch(`${API}/accounts`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`GET /accounts failed (${res.status}): ${txt}`);
+  }
+  const data = (await res.json()) as BackendAccount[];
 
+  return data.map((a) => ({
+    login_hint: a.login_hint ?? String(a.login),
+    label: a.label,
+    server: a.server,
+    currency: a.currency,
+    account_size: a.account_size,
+  }));
+}
+
+/**
+ * CLOUD MODE STUB: do NOT call the MT5 endpoint in production.
+ * Return a harmless placeholder so the UI doesn't error.
+ */
 export async function fetchSnapshot(login_hint: string | number): Promise<Snapshot> {
   const now = Date.now() / 1000;
   return {
@@ -69,22 +90,23 @@ export async function fetchSnapshot(login_hint: string | number): Promise<Snapsh
 }
 
 /**
- * Optional helper if you need a one-off live snapshot anywhere.
+ * Pull latest metrics per account from the backend (Supabase-backed).
+ * Endpoint added in backend: GET /snapshots/latest
  */
-export async function fetchSnapshot(login_hint: string | number): Promise<Snapshot> {
-  const login = typeof login_hint === "string" ? login_hint : String(login_hint);
-  const res = await fetch(`${API}/accounts/${login}/snapshot`, {
+export async function fetchLatestSnapshots(): Promise<
+  { login_hint: string; snapshot: { balance: number|null; equity: number|null; margin: number|null; margin_free: number|null }; updated_at: string | number | null }[]
+> {
+  const res = await fetch(`${API}/snapshots/latest`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`GET /accounts/${login}/snapshot failed (${res.status}): ${txt}`);
+    throw new Error(`GET /snapshots/latest failed (${res.status}): ${txt}`);
   }
-  return (await res.json()) as Snapshot;
+  return (await res.json()) as any;
 }
 
 // --- Compatibility shims for AccountPage.tsx ---
-
 export async function fetchAccount(login_hint: string | number): Promise<AccountRow | null> {
   const all = await fetchAccounts();
   const key = String(login_hint);
@@ -102,6 +124,5 @@ export type Position = {
 };
 
 export async function fetchAccountPositions(_login_hint: string | number): Promise<Position[]> {
-  // For now, no REST call; return empty until we add backend positions.
   return [];
 }
