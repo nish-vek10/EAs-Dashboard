@@ -7,7 +7,7 @@ import asyncio
 import json
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 # ---- App + CORS -------------------------------------------------------------
 
@@ -26,6 +26,21 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# ---- Supabase (for cloud fallback) ------------------------------------------
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_ENABLED = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+
+supabase_client: Optional[Any] = None
+if SUPABASE_ENABLED:
+    try:
+        from supabase import create_client  # type: ignore
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)  # type: ignore
+    except Exception:
+        # If supabase python client import/creation fails, disable fallback
+        supabase_client = None
+        SUPABASE_ENABLED = False
 
 @app.get("/health")
 def health():
@@ -114,9 +129,41 @@ async def _poll_snapshots():
 
 @app.get("/accounts")
 def list_accounts() -> List[dict]:
-    """List accounts without secrets."""
-    # On Heroku this will be [] (no accounts.json / MT5 disabled)
-    return ACCOUNTS_LIST
+    """
+    List accounts without secrets.
+
+    - Local (MT5_ENABLED=1): returns the accounts.json projection (current behavior).
+    - Cloud (MT5_ENABLED=0): returns rows from Supabase 'accounts' table,
+      mapped to the frontend's expected shape.
+    """
+    if MT5_ENABLED:
+        return ACCOUNTS_LIST
+
+    # Cloud fallback to Supabase
+    if not supabase_client:
+        # No Supabase configured; return empty list gracefully
+        return []
+
+    # Pull minimal fields and map to your frontend AccountRow shape
+    try:
+        resp = supabase_client.table("accounts").select(
+            "id,name,broker,mt5_login,base_currency"
+        ).order("name", desc=False).execute()
+    except Exception:
+        return []
+
+    out: List[dict] = []
+    for r in (resp.data or []):
+        out.append({
+            "label": r.get("name"),
+            # frontend uses login_hint as the stable string id
+            "login_hint": str(r.get("mt5_login") or r.get("id")),
+            "server": r.get("broker") or "",
+            "currency": r.get("base_currency") or "USD",
+            # keep this key so frontend math doesn't break (null is OK)
+            "account_size": None,
+        })
+    return out
 
 
 @app.get("/accounts/{login}/snapshot")
