@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { fetchAccountsFiltered, fetchLatestSnapshots, type AccountRow } from "../api";
+import {
+  fetchAccountsFiltered,
+  fetchLatestSnapshots,
+  type AccountRow,
+} from "../api";
 import AccountCard from "../components/AccountCard";
-import { type Group } from "../groups"; // keep your type for the tab prop
+import { type Group } from "../groups";
 
 type SortKey = "alpha" | "equity_asc" | "equity_desc" | "net_asc" | "net_desc";
 
@@ -38,23 +42,20 @@ export default function Overview({ filter }: { filter: Group }) {
   const [sortKey, setSortKey] = useState<SortKey>("alpha");
   const timerRef = useRef<number | null>(null);
 
-  // Map your existing Group type to backend group names
+  // Map your tab filter to backend group names
   function groupNameFromFilter(f: Group): string | undefined {
-    if (f === "All") return undefined; // no filter -> All Accounts
-    // For your existing tabs, the names match Supabase:
-    // "E2T Demos" | "Nish Algos"
-    return String(f);
+    if (f === "All") return undefined;            // All Accounts
+    return String(f);                             // "E2T Demos" | "Nish Algos"
   }
 
-  // Load accounts whenever the tab changes
+  // Load account list for the active tab
   useEffect(() => {
     let mounted = true;
     setError(null);
 
-    const group = groupNameFromFilter(filter);
-
     (async () => {
       try {
+        const group = groupNameFromFilter(filter);
         const initial = await fetchAccountsFiltered(group);
         if (!mounted) return;
         setAccounts(initial);
@@ -67,7 +68,7 @@ export default function Overview({ filter }: { filter: Group }) {
     return () => { mounted = false; };
   }, [filter]);
 
-  // Poll /snapshots/latest and merge values
+  // Poll /snapshots/latest and merge values every 2s
   useEffect(() => {
     let mounted = true;
 
@@ -85,9 +86,9 @@ export default function Overview({ filter }: { filter: Group }) {
           const eq = (hit.snapshot?.equity ?? a.equity ?? 0) as number;
           const size = a.account_size ?? 0;
           const computedPct = size > 0 ? ((eq - size) / size) * 100 : null;
-          const _netPct = hit.net_return_pct ?? computedPct; // if you later show it explicitly
+          const _netPct = hit.net_return_pct ?? computedPct; // available if you need to render it directly
 
-          return {
+        return {
             ...a,
             balance: hit.snapshot?.balance ?? a.balance ?? null,
             equity: eq ?? null,
@@ -108,10 +109,7 @@ export default function Overview({ filter }: { filter: Group }) {
 
     return () => {
       mounted = false;
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     };
   }, []); // poll regardless of tab
 
