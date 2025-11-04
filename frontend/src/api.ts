@@ -126,3 +126,33 @@ export type Position = {
 export async function fetchAccountPositions(_login_hint: string | number): Promise<Position[]> {
   return [];
 }
+
+export type GroupSummary = { name: string; count: number; sort_index: number };
+
+export async function fetchGroups(): Promise<GroupSummary[]> {
+  const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  const res = await fetch(`${API}/groups`, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`GET /groups failed (${res.status}): ${txt}`);
+  }
+  return (await res.json()) as GroupSummary[];
+}
+
+export async function fetchAccountsFiltered(group?: string): Promise<AccountRow[]> {
+  const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  const url = group ? `${API}/accounts?group=${encodeURIComponent(group)}` : `${API}/accounts`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`GET /accounts failed (${res.status}): ${txt}`);
+  }
+  const data = (await res.json()) as any[];
+  return data.map((a) => ({
+    login_hint: a.login_hint ?? String(a.login),
+    label: a.label,
+    server: a.server,
+    currency: a.currency,
+    account_size: a.account_size,
+  }));
+}
