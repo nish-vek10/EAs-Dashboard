@@ -1,3 +1,4 @@
+// frontend/src/components/AccountCard.tsx
 import React from "react";
 import type { AccountRow } from "../api";
 
@@ -17,23 +18,14 @@ function fmtPct(n?: number | null) {
 }
 
 export default function AccountCard({ a }: { a: AccountRow }) {
+  // Use values coming from Overview’s live merge (polling /snapshots/latest)
   const currency = a.currency || "USD";
 
-  // Consider the row "live" if we saw an update in the last ~6 seconds
-  const nowSec = Date.now() / 1000;
-  const fresh =
-    typeof a.updated_at === "number" && nowSec - a.updated_at < 6;
-
-  // Use values merged into the row by Overview/live.ts
-  const balanceNum = typeof a.balance === "number" ? a.balance : null;
+  const balance = fmt(a.balance);
   const equityNum = typeof a.equity === "number" ? a.equity : null;
-  const marginNum = typeof a.margin === "number" ? a.margin : null;
-  const freeNum = typeof a.margin_free === "number" ? a.margin_free : null;
-
-  const balance = fmt(balanceNum);
   const equity = fmt(equityNum);
-  const margin = fmt(marginNum);
-  const free = fmt(freeNum);
+  const margin = fmt(a.margin);
+  const free = fmt(a.margin_free);
 
   // Net % = (equity / account_size - 1) * 100
   const netPctNum =
@@ -50,6 +42,10 @@ export default function AccountCard({ a }: { a: AccountRow }) {
         ? "var(--success, #22c55e)"
         : "var(--danger, #ef4444)"
       : "inherit";
+
+  // Show "Live" if we’ve seen an update in the last ~10s
+  const nowSec = Date.now() / 1000;
+  const fresh = typeof a.updated_at === "number" && nowSec - a.updated_at < 10;
 
   return (
     <div
@@ -89,7 +85,7 @@ export default function AccountCard({ a }: { a: AccountRow }) {
             #{a.login_hint} • {a.server || "—"}
           </div>
 
-          {/* Live/Pending + Currency */}
+          {/* Live + USD */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div
               style={{
@@ -101,7 +97,6 @@ export default function AccountCard({ a }: { a: AccountRow }) {
                   : "rgba(148,163,184,0.2)",
                 color: fresh ? "#22c55e" : "#94a3b8",
                 width: "fit-content",
-                transition: "all 200ms ease",
               }}
             >
               {fresh ? "Live" : "Pending"}
@@ -121,27 +116,17 @@ export default function AccountCard({ a }: { a: AccountRow }) {
           </div>
         </div>
 
-        {/* Net % tile for small screens */}
+        {/* Net % tile for MOBILE (header) */}
         <div className="netpct netpct--header" style={{ minWidth: 120 }}>
-          <Metric
-            label="Net % Change"
-            value={netPctStr}
-            valueColor={netColor}
-            valueBold
-          />
+          <Metric label="Net % Change" value={netPctStr} valueColor={netColor} valueBold />
         </div>
       </div>
 
       {/* Metrics row */}
       <div className="metric-grid" style={{ display: "grid", gap: 12 }}>
-        {/* Net % (desktop) */}
+        {/* Net % for DESKTOP */}
         <div className="netpct netpct--grid">
-          <Metric
-            label="Net % Change"
-            value={netPctStr}
-            valueColor={netColor}
-            valueBold
-          />
+          <Metric label="Net % Change" value={netPctStr} valueColor={netColor} valueBold />
         </div>
 
         <Metric label="Balance" value={balance} />
@@ -183,7 +168,6 @@ function Metric({
           fontSize: 16,
           color: valueColor || "inherit",
           fontWeight: valueBold ? 700 : 800,
-          transition: "color 250ms ease",
         }}
       >
         {value}
