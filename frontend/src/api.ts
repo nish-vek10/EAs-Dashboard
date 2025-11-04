@@ -56,12 +56,13 @@ export async function fetchAccounts(): Promise<AccountRow[]> {
   }
   const data = (await res.json()) as BackendAccount[];
   return data.map((a) => ({
-    login_hint: a.login_hint ?? String(a.login),
+    login_hint: String(a.login_hint ?? a.login ?? ""),
     label: a.label,
     server: a.server,
     currency: a.currency,
     account_size: a.account_size,
   }));
+
 }
 
 /**
@@ -88,14 +89,36 @@ export async function fetchSnapshot(login_hint: string | number): Promise<Snapsh
  * Latest metrics per account from the backend (Supabase-backed).
  */
 export async function fetchLatestSnapshots(): Promise<
-  { login_hint: string; snapshot: { balance: number|null; equity: number|null; margin: number|null; margin_free: number|null }; net_return_pct: number | null; updated_at: string | number | null }[]
+  {
+    login_hint: string;
+    snapshot: {
+      balance: number | null;
+      equity: number | null;
+      margin: number | null;
+      margin_free: number | null;
+    };
+    net_return_pct: number | null;
+    updated_at: string | number | null;
+  }[]
 > {
   const res = await fetch(`${API}/snapshots/latest`, { headers: { Accept: "application/json" } });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`GET /snapshots/latest failed (${res.status}): ${txt}`);
   }
-  return (await res.json()) as any;
+  const raw = (await res.json()) as any[];
+  const toNum = (v: any) => (v === null || v === undefined ? null : (Number(v) ?? null));
+  return raw.map((r) => ({
+    login_hint: String(r.login_hint),
+    snapshot: {
+      balance: toNum(r?.snapshot?.balance),
+      equity: toNum(r?.snapshot?.equity),
+      margin: toNum(r?.snapshot?.margin),
+      margin_free: toNum(r?.snapshot?.margin_free),
+    },
+    net_return_pct: toNum(r?.net_return_pct),
+    updated_at: r?.updated_at ?? null,
+  }));
 }
 
 // --- Compatibility shims for AccountPage.tsx ---
@@ -139,7 +162,7 @@ export async function fetchAccountsFiltered(group?: string): Promise<AccountRow[
   }
   const data = (await res.json()) as any[];
   return data.map((a) => ({
-    login_hint: a.login_hint ?? String(a.login),
+    login_hint: String(a.login_hint ?? a.login ?? ""),
     label: a.label,
     server: a.server,
     currency: a.currency,
