@@ -1,3 +1,4 @@
+import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchAccountPositions, type Position } from "../api";
 import { subscribe, type LiveEvent } from "../live";
@@ -7,7 +8,7 @@ export default function AccountPage() {
   const { loginHint = "" } = useParams();
   const [snapshot, setSnapshot] = useState<any>(null);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [updatedAt, setUpdatedAt] = useState<string | undefined>(undefined);
+  const [updatedAt, setUpdatedAt] = useState<string | number | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [group, setGroupState] = useState<Group>(getGroup(loginHint));
   useEffect(() => {
@@ -95,10 +96,20 @@ export default function AccountPage() {
             <KPI label="Free" value={fmt(snapshot?.margin_free)} />{" "}
           </div>{" "}
           <div className="muted" style={{ fontSize: 12 }}>
-            {" "}
             Updated:{" "}
-            {updatedAt ? new Date(updatedAt).toLocaleTimeString() : "—"}{" "}
-          </div>{" "}
+            {updatedAt
+              ? (() => {
+                const n = Number(updatedAt);
+                const ms =
+                 Number.isFinite(n) && n < 10_000_000_000
+                  ? n * 1000 // seconds → ms
+                  : Number.isFinite(n)
+                  ? n // already ms
+                  : Date.parse(String(updatedAt)); // ISO string
+                return Number.isFinite(ms) ? new Date(ms).toLocaleTimeString() : "—";
+              })()
+            : "—"}
+          </div>
           <AccountPositions positions={positions} />{" "}
         </>
       )}{" "}

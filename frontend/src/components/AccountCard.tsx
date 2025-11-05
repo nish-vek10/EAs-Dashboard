@@ -43,9 +43,12 @@ export default function AccountCard({ a }: { a: AccountRow }) {
         : "var(--danger, #ef4444)"
       : "inherit";
 
-  // Show "Live" if we’ve seen an update in the last ~10s
+  // Show "Live" if the last DB update is recent (tweakable window)
+  const FRESH_WINDOW_SEC = 90; // you can change this later if you like
   const nowSec = Date.now() / 1000;
-  const fresh = typeof a.updated_at === "number" && nowSec - a.updated_at < 10;
+  const fresh =
+    typeof a.updated_at === "number" &&
+    nowSec - a.updated_at < FRESH_WINDOW_SEC;
 
   return (
     <div

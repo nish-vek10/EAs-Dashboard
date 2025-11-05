@@ -44,9 +44,12 @@ export default function Overview({ filter }: { filter: Group }) {
 
   // Map your tab filter to backend group names
   function groupNameFromFilter(f: Group): string | undefined {
-    if (f === "All") return undefined;            // All Accounts
-    return String(f);                             // "E2T Demos" | "Nish Algos"
+    if (f === "All") return undefined; // All Accounts => no filter
+    if (f === "E2T") return "E2T Demos";
+    if (f === "Nish") return "Nish Algos";
+    return undefined;
   }
+
 
   // Load account list for the active tab
   useEffect(() => {
